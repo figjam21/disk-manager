@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Disk Manager (Terminal)
+GenericName=Disk & RAID Manager (TUI)
+Comment=Manage disks, partitions, RAID arrays, SMART health, firmware, and recovery
+Exec=sudo /usr/bin/disk-manager-tui
+Icon=disk-manager
+Terminal=true
+Categories=System;HardwareSettings;
+Keywords=disk;raid;mdadm;smart;partition;firmware;storage;recovery;
+StartupNotify=false

@@ -117,7 +117,12 @@ private:
 // ============================================================ construction
 
 GuiApp::GuiApp() {
+#ifdef DM_VERSION
+    set_title("disk-manager " DM_VERSION);
+#else
     set_title("disk-manager");
+#endif
+    set_icon_name("disk-manager");
     set_default_size(950, 620);
     set_border_width(4);
     add(vbox_);

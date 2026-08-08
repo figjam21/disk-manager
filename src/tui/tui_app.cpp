@@ -35,8 +35,14 @@ void TuiApp::run() {
             "mounting, RAID management, firmware updates, and recovery all require root.\n"
             "Re-run with sudo for full functionality.");
     }
+    static const std::string title =
+#ifdef DM_VERSION
+        "disk-manager " DM_VERSION;
+#else
+        "disk-manager";
+#endif
     while (true) {
-        int choice = ui::runMenu("disk-manager", {
+        int choice = ui::runMenu(title, {
             "Disks & SMART",
             "RAID Arrays",
             "Create RAID Array",

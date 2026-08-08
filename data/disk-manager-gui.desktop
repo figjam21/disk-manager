@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Disk Manager
+GenericName=Disk & RAID Manager
+Comment=Manage disks, partitions, RAID arrays, SMART health, firmware, and recovery
+Exec=pkexec /usr/bin/disk-manager-gui
+Icon=disk-manager
+Terminal=false
+Categories=System;HardwareSettings;
+Keywords=disk;raid;mdadm;smart;partition;firmware;storage;recovery;
+StartupNotify=true

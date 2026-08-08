@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="55%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#0EA5A5"/>
+    </linearGradient>
+    <linearGradient id="case" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F1F4F8"/>
+      <stop offset="100%" stop-color="#C7D0DC"/>
+    </linearGradient>
+    <linearGradient id="platter" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E7EBF1"/>
+      <stop offset="100%" stop-color="#A9B4C4"/>
+    </linearGradient>
+    <linearGradient id="wrenchBadge" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FDBA43"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0B1220" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- badge background -->
+  <rect x="4" y="4" width="248" height="248" rx="56" fill="url(#bg)"/>
+  <rect x="4" y="4" width="248" height="248" rx="56" fill="none" stroke="#0B1220" stroke-opacity="0.15" stroke-width="2"/>
+
+  <!-- second drive peeking out behind, hinting at a multi-disk array -->
+  <rect x="34" y="52" width="150" height="84" rx="14" fill="#16233F" opacity="0.45"/>
+
+  <!-- main hard drive, viewed from the top with the cover off -->
+  <g filter="url(#soft)">
+    <rect x="46" y="82" width="172" height="102" rx="16" fill="url(#case)" stroke="#8A94A6" stroke-width="2"/>
+  </g>
+
+  <!-- corner screws -->
+  <circle cx="60" cy="96" r="4.5" fill="#98A2B3" stroke="#71798A" stroke-width="1"/>
+  <circle cx="204" cy="96" r="4.5" fill="#98A2B3" stroke="#71798A" stroke-width="1"/>
+  <circle cx="60" cy="170" r="4.5" fill="#98A2B3" stroke="#71798A" stroke-width="1"/>
+
+  <!-- label sticker -->
+  <rect x="150" y="96" width="56" height="30" rx="3" fill="#E4E9F0" stroke="#B7C0CE" stroke-width="1.5"/>
+  <rect x="156" y="104" width="40" height="4" rx="2" fill="#AEB8C7"/>
+  <rect x="156" y="113" width="30" height="4" rx="2" fill="#AEB8C7"/>
+
+  <!-- platter -->
+  <circle cx="102" cy="134" r="38" fill="url(#platter)" stroke="#78839A" stroke-width="2"/>
+  <circle cx="102" cy="134" r="26" fill="none" stroke="#78839A" stroke-width="1.5" opacity="0.55"/>
+  <circle cx="102" cy="134" r="14" fill="none" stroke="#78839A" stroke-width="1.5" opacity="0.4"/>
+  <circle cx="102" cy="134" r="8" fill="#334155"/>
+
+  <!-- actuator arm + read/write head -->
+  <path d="M 200 100 L 132 128" stroke="#475569" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="132" cy="128" r="6.5" fill="#334155"/>
+
+  <!-- tool badge: an open-end spanner/wrench, marking this as a management utility -->
+  <circle cx="196" cy="200" r="34" fill="url(#wrenchBadge)" stroke="#B45309" stroke-width="2.5"/>
+  <g transform="translate(196 200) rotate(45)">
+    <line x1="-3" y1="-3" x2="19" y2="19" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"/>
+    <path d="M -13.13 -24.95 A 13 13 0 1 1 -24.56 -15.36" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -29,18 +29,23 @@ GUI, built on top of the standard Linux storage stack (`mdadm`, `smartctl`, `par
   `ddrescue` (resumable via a persistent mapfile, live progress), or launch
   `testdisk`/`photorec` for partition-table and file-level recovery.
 
-## Build
+## Install (.deb package, recommended)
 
 ```bash
-sudo ./install.sh
+sudo ./install.sh          # build toolchain + runtime deps
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build -j"$(nproc)"
+cd build && cpack -G DEB
+sudo dpkg -i disk-manager_*_amd64.deb
 ```
 
-This installs the build toolchain and every runtime tool disk-manager shells out
-to (mdadm, smartmontools, parted, filesystem utilities, ledmon/sg3-utils,
-gddrescue, testdisk, fwupd), loads the RAID kernel modules, enables the relevant
-background services, and builds the project. Debian/Ubuntu only.
+This installs both binaries to `/usr/bin`, registers a **Disk Manager** entry
+(with icon) in your desktop's application menu that launches the GUI elevated
+via `pkexec`, and a **Disk Manager (Terminal)** entry that opens the TUI in a
+terminal via `sudo`. Debian/Ubuntu only (the runtime tool dependencies are apt
+package names).
 
-To build manually instead:
+## Build without packaging
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -53,9 +58,11 @@ such dependency and always builds.
 ## Run
 
 ```bash
+sudo disk-manager-tui     # if installed via the .deb
+# or, from a build tree:
 sudo ./build/disk-manager-tui
-# or
-sudo ./build/disk-manager-gui
+# or the GUI:
+sudo disk-manager-gui
 ```
 
 Root is required for anything that touches disks (partitioning, formatting,
@@ -79,5 +86,7 @@ include/dm/      public API of the core library (dm_core)
 src/core/        implementation: device/smart/partition/filesystem/mdadm/locate/firmware/recovery
 src/tui/         ncurses frontend
 src/gui/         gtkmm frontend
+data/            .desktop entries and the app icon (hicolor theme, all sizes + scalable SVG)
+packaging/       postinst/postrm maintainer scripts (desktop/icon cache refresh)
 install.sh       Debian/Ubuntu dependency installer + build
 ```
