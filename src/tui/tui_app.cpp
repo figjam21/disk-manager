@@ -290,13 +290,20 @@ void TuiApp::screenMountManage(const BlockDevice& dev) {
 void TuiApp::screenArrays() {
     while (true) {
         if (!mdadm_.available()) { ui::showMessage("RAID", "mdadm is not installed. Run install.sh first."); return; }
+
         auto arrays = mdadm_.listArrays();
-        if (arrays.empty()) {
-            if (!ui::promptYesNo("No active RAID arrays found.\nTry to assemble arrays from mdadm.conf now?")) return;
-            auto res = mdadm_.assembleArray("", {});
-            ui::showText("Assemble", res.ok() ? "Assembled." : ("Nothing assembled:\n" + res.stdErr));
-            continue;
+        // Scans every disk's RAID superblock, not just what's currently assembled --
+        // this is what surfaces arrays after a reboot without mdadm.conf, disks
+        // moved from another machine, or an array someone stopped earlier.
+        auto discovered = mdadm_.scanForArrays();
+        std::vector<DiscoveredArray> inactive;
+        for (auto& d : discovered) if (!d.active) inactive.push_back(d);
+
+        if (arrays.empty() && inactive.empty()) {
+            ui::showMessage("RAID Arrays", "No active RAID arrays, and no RAID superblocks found on any disk.");
+            return;
         }
+
         std::vector<std::string> items;
         for (auto& a : arrays) {
             std::ostringstream os;
@@ -304,11 +311,37 @@ void TuiApp::screenArrays() {
                << "  " << a.state << (a.degraded ? "  [DEGRADED]" : "");
             items.push_back(os.str());
         }
+        int nActive = (int)arrays.size();
+        for (auto& d : inactive) {
+            std::ostringstream os;
+            os << d.preferredDevice << "  " << (d.level.empty() ? "raid?" : d.level)
+               << "  " << d.numDevices << " member(s)  [NOT ASSEMBLED]";
+            items.push_back(os.str());
+        }
         items.push_back("Back");
-        int sel = ui::runMenu("RAID Arrays", items);
-        if (sel < 0 || sel == (int)arrays.size()) return;
-        screenArrayDetail(arrays[sel].device);
+
+        int sel = ui::runMenu("RAID Arrays", items, "Enter: manage/assemble   q: back");
+        if (sel < 0 || sel == (int)items.size() - 1) return;
+        if (sel < nActive) {
+            screenArrayDetail(arrays[sel].device);
+        } else {
+            screenAssembleDiscovered(inactive[sel - nActive]);
+        }
     }
+}
+
+void TuiApp::screenAssembleDiscovered(const DiscoveredArray& disc) {
+    std::ostringstream os;
+    os << "Found on-disk but not currently assembled:\n\n"
+       << "Suggested name: " << disc.preferredDevice << "\n"
+       << "Level: " << (disc.level.empty() ? "(unknown)" : disc.level) << "\n"
+       << "Metadata version: " << disc.metadataVersion << "\n"
+       << "UUID: " << disc.uuid << "\n"
+       << "Members (" << disc.devices.size() << "):\n";
+    for (auto& dev : disc.devices) os << "  " << dev << "\n";
+    if (!ui::promptYesNo(os.str() + "\nAssemble this array now?")) return;
+    auto res = mdadm_.assembleArray(disc.preferredDevice, disc.devices);
+    ui::showText("Assemble", res.ok() ? "Assembled as " + disc.preferredDevice + "." : ("Failed:\n" + res.stdErr));
 }
 
 void TuiApp::screenArrayDetail(const std::string& mdPath) {

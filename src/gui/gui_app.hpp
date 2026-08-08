@@ -43,7 +43,11 @@ private:
         Gtk::TreeModelColumn<Glib::ustring> size;
         Gtk::TreeModelColumn<Glib::ustring> state;
         Gtk::TreeModelColumn<Glib::ustring> stateColor;
-        ArrayColumns() { add(device); add(level); add(size); add(state); add(stateColor); }
+        // -1 for a real, currently-assembled array (indexes into mdadm_.listArrays()
+        // results by device path instead); >=0 indexes discoveredInactive_ for a row
+        // found on-disk but not currently assembled.
+        Gtk::TreeModelColumn<int> discoveredIndex;
+        ArrayColumns() { add(device); add(level); add(size); add(state); add(stateColor); add(discoveredIndex); }
     };
 
     struct FirmwareColumns : public Gtk::TreeModelColumnRecord {
@@ -85,8 +89,16 @@ private:
 
     // ---- Arrays tab handlers --------------------------------------------
     std::string selectedArrayPath();
+    // If the current Arrays-tab selection is a discovered-but-not-assembled row,
+    // fills *outDisc (when non-null) and returns true.
+    bool selectedIsDiscovered(DiscoveredArray* outDisc);
+    // Shows an explanatory dialog and returns true if the current selection is a
+    // discovered-but-not-assembled row -- callers that only make sense for an
+    // active array (replace/grow/stop/mount/...) call this first and bail if true.
+    bool guardNotDiscovered(const std::string& actionName);
     void onArraysRowActivated(const Gtk::TreeModel::Path& path, Gtk::TreeViewColumn* column);
     void onArrayDetailClicked();
+    void onAssembleDiscoveredClicked();
     void onCreateArrayClicked();
     void onReplaceDriveClicked();
     void onAddSpareClicked();
@@ -160,9 +172,11 @@ private:
     Gtk::TreeView arraysView_;
     Glib::RefPtr<Gtk::ListStore> arraysStore_;
     ArrayColumns arrayCols_;
+    std::vector<DiscoveredArray> discoveredInactive_; // backing store for discoveredIndex rows
     Gtk::Box arraysButtonBox_{Gtk::ORIENTATION_HORIZONTAL, 6};
     Gtk::Button arraysRefreshBtn_{"Refresh"};
     Gtk::Button arraysDetailBtn_{"Detail / Rebuild status"};
+    Gtk::Button arraysAssembleBtn_{"Assemble"};
     Gtk::Button arraysCreateBtn_{"Create Array"};
     Gtk::Button arraysReplaceBtn_{"Replace Drive"};
     Gtk::Button arraysAddSpareBtn_{"Add Spare"};

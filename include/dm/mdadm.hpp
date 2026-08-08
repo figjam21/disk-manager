@@ -39,6 +39,20 @@ struct RebuildStatus {
     std::string timeRemaining; // e.g. "12.3min", as printed by mdstat
 };
 
+// An array found by examining on-disk RAID superblocks directly, whether or not it
+// is currently assembled/running. Surfaces arrays mdadm.conf doesn't know about --
+// e.g. disks moved from another machine, or an array that was previously stopped.
+struct DiscoveredArray {
+    std::string preferredDevice; // mdadm's suggested name, e.g. "/dev/md/0"
+    std::string uuid;
+    std::string level;           // may be empty on older mdadm without --verbose support
+    std::string metadataVersion;
+    int numDevices = 0;
+    std::vector<std::string> devices; // member device paths, empty if --verbose gave none
+    bool active = false;              // true if a currently-running array has this UUID
+    std::string activeDevice;         // the running /dev/mdX, set only when active
+};
+
 class MdadmManager {
 public:
     bool available();
@@ -77,6 +91,13 @@ public:
     CommandResult growSize(const std::string& mdPath, const std::string& size = "max");
 
     RebuildStatus rebuildStatus(const std::string& mdPath);
+
+    // Scans every block device's RAID superblock (`mdadm --examine --scan
+    // --verbose`) to find arrays whether or not they're currently assembled --
+    // read-only, does not activate or modify anything. Cross-references
+    // listArrays() so each result's `active`/`activeDevice` reflects whether it's
+    // already running (matched by UUID).
+    std::vector<DiscoveredArray> scanForArrays();
 };
 
 } // namespace dm

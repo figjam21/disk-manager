@@ -309,4 +309,84 @@ RebuildStatus MdadmManager::rebuildStatus(const std::string& mdPath) {
     return status;
 }
 
+std::vector<DiscoveredArray> MdadmManager::scanForArrays() {
+    std::vector<DiscoveredArray> result;
+
+    // `--verbose` is what makes mdadm print level/num-devices and a "devices="
+    // line per array; without it we'd only get UUID/metadata, which isn't enough
+    // to offer "assemble this" in the UI.
+    CommandResult res = run({"mdadm", "--examine", "--scan", "--verbose"});
+    if (res.stdOut.empty()) {
+        return result; // nothing found (or no permission / mdadm missing) -- not an error
+    }
+
+    std::istringstream iss(res.stdOut);
+    std::string line;
+    DiscoveredArray* current = nullptr;
+    static const std::string kDevicesPrefix = "devices=";
+
+    while (std::getline(iss, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        std::string trimmed = trim(line);
+        if (trimmed.empty()) {
+            continue;
+        }
+
+        if (trimmed.rfind("ARRAY", 0) == 0) {
+            std::vector<std::string> tokens = splitWs(trimmed);
+            DiscoveredArray arr;
+            if (tokens.size() > 1) {
+                arr.preferredDevice = tokens[1];
+            }
+            for (size_t i = 2; i < tokens.size(); ++i) {
+                size_t eq = tokens[i].find('=');
+                if (eq == std::string::npos) {
+                    continue;
+                }
+                std::string key = tokens[i].substr(0, eq);
+                std::string value = tokens[i].substr(eq + 1);
+                if (key == "level") {
+                    arr.level = value;
+                } else if (key == "metadata") {
+                    arr.metadataVersion = value;
+                } else if (key == "UUID") {
+                    arr.uuid = value;
+                } else if (key == "num-devices") {
+                    arr.numDevices = parseIntSafe(value);
+                }
+            }
+            result.push_back(std::move(arr));
+            current = &result.back();
+        } else if (current && trimmed.rfind(kDevicesPrefix, 0) == 0) {
+            std::string list = trimmed.substr(kDevicesPrefix.size());
+            std::istringstream dstream(list);
+            std::string dev;
+            while (std::getline(dstream, dev, ',')) {
+                dev = trim(dev);
+                if (!dev.empty()) {
+                    current->devices.push_back(dev);
+                }
+            }
+        }
+    }
+
+    // Cross-reference against currently-assembled arrays by UUID, so the UI can
+    // tell "already running" apart from "found on disk but not assembled".
+    for (const auto& running : listArrays()) {
+        if (running.uuid.empty()) {
+            continue;
+        }
+        for (auto& discovered : result) {
+            if (discovered.uuid == running.uuid) {
+                discovered.active = true;
+                discovered.activeDevice = running.device;
+            }
+        }
+    }
+
+    return result;
+}
+
 } // namespace dm

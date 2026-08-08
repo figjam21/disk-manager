@@ -585,7 +585,7 @@ void GuiApp::buildArraysTab() {
     arraysTab_.set_border_width(6);
     arraysTab_.pack_start(arraysScroll_, Gtk::PACK_EXPAND_WIDGET);
 
-    for (auto* b : {&arraysRefreshBtn_, &arraysDetailBtn_, &arraysCreateBtn_, &arraysReplaceBtn_,
+    for (auto* b : {&arraysRefreshBtn_, &arraysDetailBtn_, &arraysAssembleBtn_, &arraysCreateBtn_, &arraysReplaceBtn_,
                     &arraysAddSpareBtn_, &arraysFailRemoveBtn_, &arraysGrowBtn_, &arraysStopBtn_,
                     &arraysMountBtn_})
         arraysButtonBox_.pack_start(*b, Gtk::PACK_SHRINK);
@@ -593,6 +593,7 @@ void GuiApp::buildArraysTab() {
 
     arraysRefreshBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::refreshArrays));
     arraysDetailBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onArrayDetailClicked));
+    arraysAssembleBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onAssembleDiscoveredClicked));
     arraysCreateBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onCreateArrayClicked));
     arraysReplaceBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onReplaceDriveClicked));
     arraysAddSpareBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onAddSpareClicked));
@@ -607,7 +608,9 @@ void GuiApp::buildArraysTab() {
 
 void GuiApp::refreshArrays() {
     arraysStore_->clear();
+    discoveredInactive_.clear();
     if (!mdadm_.available()) return;
+
     auto arrays = mdadm_.listArrays();
     for (auto& a : arrays) {
         auto row = *arraysStore_->append();
@@ -616,6 +619,22 @@ void GuiApp::refreshArrays() {
         row[arrayCols_.size] = human(a.arraySizeBytes);
         row[arrayCols_.state] = a.state + (a.degraded ? "  [DEGRADED]" : "");
         row[arrayCols_.stateColor] = a.degraded ? "#c62828" : "#2e7d32";
+        row[arrayCols_.discoveredIndex] = -1;
+    }
+
+    // Scans every disk's RAID superblock directly, not just what's currently
+    // assembled -- surfaces arrays after a reboot without mdadm.conf, disks moved
+    // from another machine, or an array someone stopped earlier.
+    for (auto& d : mdadm_.scanForArrays()) {
+        if (d.active) continue; // already shown above via listArrays()
+        discoveredInactive_.push_back(d);
+        auto row = *arraysStore_->append();
+        row[arrayCols_.device] = d.preferredDevice;
+        row[arrayCols_.level] = d.level.empty() ? "raid?" : d.level;
+        row[arrayCols_.size] = std::to_string(d.numDevices) + " member(s)";
+        row[arrayCols_.state] = "NOT ASSEMBLED";
+        row[arrayCols_.stateColor] = "#8a6d00";
+        row[arrayCols_.discoveredIndex] = (int)discoveredInactive_.size() - 1;
     }
 }
 
@@ -626,14 +645,52 @@ std::string GuiApp::selectedArrayPath() {
     return d;
 }
 
+bool GuiApp::selectedIsDiscovered(DiscoveredArray* outDisc) {
+    auto iter = arraysView_.get_selection()->get_selected();
+    if (!iter) return false;
+    int idx = (*iter)[arrayCols_.discoveredIndex];
+    if (idx < 0) return false;
+    if (outDisc && idx < (int)discoveredInactive_.size()) *outDisc = discoveredInactive_[idx];
+    return true;
+}
+
+bool GuiApp::guardNotDiscovered(const std::string& actionName) {
+    if (!selectedIsDiscovered(nullptr)) return false;
+    infoDialog(actionName, "This array isn't assembled yet. Select it and click \"Assemble\" first.");
+    return true;
+}
+
 void GuiApp::onArraysRowActivated(const Gtk::TreeModel::Path&, Gtk::TreeViewColumn*) {
-    onArrayDetailClicked();
+    if (selectedIsDiscovered(nullptr)) onAssembleDiscoveredClicked();
+    else onArrayDetailClicked();
 }
 
 void GuiApp::onArrayDetailClicked() {
+    if (guardNotDiscovered("Detail")) return;
     std::string path = selectedArrayPath();
     if (path.empty()) { infoDialog("RAID", "Select an array first."); return; }
     showArrayDetailDialog(path);
+}
+
+void GuiApp::onAssembleDiscoveredClicked() {
+    DiscoveredArray disc;
+    if (!selectedIsDiscovered(&disc)) { infoDialog("Assemble", "Select a \"NOT ASSEMBLED\" array first."); return; }
+
+    std::ostringstream os;
+    os << "Found on-disk but not currently assembled:\n\n"
+       << "Suggested name: " << disc.preferredDevice << "\n"
+       << "Level: " << (disc.level.empty() ? "(unknown)" : disc.level) << "\n"
+       << "Metadata version: " << disc.metadataVersion << "\n"
+       << "UUID: " << disc.uuid << "\n"
+       << "Members (" << disc.devices.size() << "):\n";
+    for (auto& dev : disc.devices) os << "  " << dev << "\n";
+    os << "\nAssemble this array now?";
+    if (!confirmYesNo("Assemble array", os.str(), Gtk::MESSAGE_QUESTION)) return;
+
+    auto res = mdadm_.assembleArray(disc.preferredDevice, disc.devices);
+    infoDialog("Assemble", res.ok() ? "Assembled as " + disc.preferredDevice + "." : ("Failed:\n" + res.stdErr),
+               res.ok() ? Gtk::MESSAGE_INFO : Gtk::MESSAGE_ERROR);
+    refreshArrays();
 }
 
 void GuiApp::onCreateArrayClicked() {
@@ -642,6 +699,7 @@ void GuiApp::onCreateArrayClicked() {
 }
 
 void GuiApp::onReplaceDriveClicked() {
+    if (guardNotDiscovered("Replace drive")) return;
     std::string path = selectedArrayPath();
     if (path.empty()) { infoDialog("RAID", "Select an array first."); return; }
     showReplaceDriveDialog(path);
@@ -649,6 +707,7 @@ void GuiApp::onReplaceDriveClicked() {
 }
 
 void GuiApp::onAddSpareClicked() {
+    if (guardNotDiscovered("Add spare")) return;
     std::string mdPath = selectedArrayPath();
     if (mdPath.empty()) { infoDialog("Add spare", "Select an array first."); return; }
     std::string dev;
@@ -660,6 +719,7 @@ void GuiApp::onAddSpareClicked() {
 }
 
 void GuiApp::onFailRemoveClicked() {
+    if (guardNotDiscovered("Fail+remove")) return;
     std::string mdPath = selectedArrayPath();
     if (mdPath.empty()) { infoDialog("Fail+remove", "Select an array first."); return; }
     std::string dev;
@@ -674,6 +734,7 @@ void GuiApp::onFailRemoveClicked() {
 }
 
 void GuiApp::onGrowArrayClicked() {
+    if (guardNotDiscovered("Grow")) return;
     std::string mdPath = selectedArrayPath();
     if (mdPath.empty()) { infoDialog("Grow", "Select an array first."); return; }
     std::string newDev;
@@ -694,6 +755,7 @@ void GuiApp::onGrowArrayClicked() {
 }
 
 void GuiApp::onStopArrayClicked() {
+    if (guardNotDiscovered("Stop array")) return;
     std::string mdPath = selectedArrayPath();
     if (mdPath.empty()) { infoDialog("Stop array", "Select an array first."); return; }
     if (!confirmYesNo("Stop array",
@@ -705,6 +767,7 @@ void GuiApp::onStopArrayClicked() {
 }
 
 void GuiApp::onArrayMountClicked() {
+    if (guardNotDiscovered("Mount")) return;
     std::string mdPath = selectedArrayPath();
     if (mdPath.empty()) { infoDialog("Mount", "Select an array first."); return; }
     auto devOpt = devices_.find(mdPath);

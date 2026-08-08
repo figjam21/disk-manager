@@ -33,6 +33,7 @@ private:
 
     void screenArrays();
     void screenArrayDetail(const std::string& mdPath);
+    void screenAssembleDiscovered(const DiscoveredArray& disc);
     void screenCreateArray();
     void screenReplaceDrive(const std::string& mdPath);
     void screenGrowArray(const std::string& mdPath);
