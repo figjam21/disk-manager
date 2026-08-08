@@ -2,6 +2,7 @@
 
 #include <glib.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <iomanip>
@@ -180,12 +181,14 @@ void GuiApp::buildDisksTab() {
     disksButtonBox_.pack_start(disksDetailsBtn_, Gtk::PACK_SHRINK);
     disksButtonBox_.pack_start(disksPartitionsBtn_, Gtk::PACK_SHRINK);
     disksButtonBox_.pack_start(disksLocateBtn_, Gtk::PACK_SHRINK);
+    disksButtonBox_.pack_start(disksPowerDownBtn_, Gtk::PACK_SHRINK);
     disksTab_.pack_start(disksButtonBox_, Gtk::PACK_SHRINK);
 
     disksRefreshBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::refreshDisks));
     disksDetailsBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onDiskDetailsClicked));
     disksPartitionsBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onDiskPartitionsClicked));
     disksLocateBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onDiskLocateClicked));
+    disksPowerDownBtn_.signal_clicked().connect(sigc::mem_fun(*this, &GuiApp::onDiskPowerDownClicked));
 
     notebook_.append_page(disksTab_, "Disks");
     refreshDisks();
@@ -253,6 +256,69 @@ void GuiApp::onDiskLocateClicked() {
           "drive's activity light flickers. Watch for the blinking drive, then come\n"
           "back here and click Locate again to stop.";
     infoDialog("Locate " + path, how);
+}
+
+void GuiApp::onDiskPowerDownClicked() {
+    std::string path = selectedDiskPath();
+    if (path.empty()) { infoDialog("Power down", "Select a disk first."); return; }
+    auto devOpt = devices_.find(path);
+    if (!devOpt) { infoDialog("Power down", "Could not read device info for " + path, Gtk::MESSAGE_ERROR); return; }
+    auto& dev = *devOpt;
+
+    if (!power_.hdparmAvailable()) { infoDialog("Power down", "hdparm is not installed."); return; }
+
+    if (dev.kname == devices_.rootDiskName()) {
+        infoDialog("Power down", "Refusing to power down the system disk.", Gtk::MESSAGE_ERROR);
+        return;
+    }
+    if (!power_.supportsStandby(dev.transport)) {
+        infoDialog("Power down",
+            path + " is " + (dev.transport.empty() ? "not a spinning ATA/SATA disk" : dev.transport) +
+            " -- ATA standby doesn't apply (no platters/heads to park).", Gtk::MESSAGE_ERROR);
+        return;
+    }
+
+    // Refuse if this disk (or any partition on it) is a member of a currently
+    // active RAID array -- spinning it down mid-array risks the array treating
+    // it as failed.
+    std::vector<std::string> namesToCheck = {dev.path};
+    for (auto& c : dev.childPaths) namesToCheck.push_back(c);
+    for (auto& arr : mdadm_.listArrays()) {
+        for (auto& m : arr.members) {
+            if (std::find(namesToCheck.begin(), namesToCheck.end(), m.device) != namesToCheck.end()) {
+                infoDialog("Power down",
+                    path + " has a member in active RAID array " + arr.device + " (" + m.device + ").\n"
+                    "Powering it down could make the array treat it as failed. Stop or\n"
+                    "otherwise take the array down first if you really need to do this.",
+                    Gtk::MESSAGE_ERROR);
+                return;
+            }
+        }
+    }
+
+    std::vector<std::string> mounted;
+    for (auto& name : namesToCheck) {
+        auto d = devices_.find(name);
+        if (d && !d->mountpoint.empty()) mounted.push_back(d->mountpoint);
+    }
+    if (!mounted.empty()) {
+        std::ostringstream os;
+        os << path << " has mounted filesystems:\n";
+        for (auto& mp : mounted) os << "  " << mp << "\n";
+        os << "\nUnmount them and continue?";
+        if (!confirmYesNo("Power down", os.str(), Gtk::MESSAGE_QUESTION)) return;
+        for (auto& mp : mounted) {
+            auto res = filesystems_.unmount(mp);
+            if (!res.ok()) { infoDialog("Unmount failed", "Could not unmount " + mp + ":\n" + res.stdErr, Gtk::MESSAGE_ERROR); return; }
+        }
+    }
+
+    if (!confirmYesNo("Power down",
+            "Spin down " + path + " now?\nIt will spin back up automatically on its next access.",
+            Gtk::MESSAGE_QUESTION)) return;
+    auto res = power_.standby(path);
+    infoDialog("Power down", res.ok() ? path + " is now in standby." : ("Failed:\n" + res.stdErr),
+               res.ok() ? Gtk::MESSAGE_INFO : Gtk::MESSAGE_ERROR);
 }
 
 void GuiApp::showSmartDetailDialog(const std::string& diskPath) {

@@ -28,7 +28,7 @@ apt-get install -y \
 
 echo "==> Installing RAID + storage management tools"
 apt-get install -y \
-    mdadm smartmontools parted gdisk \
+    mdadm smartmontools parted gdisk hdparm \
     e2fsprogs xfsprogs btrfs-progs dosfstools
 
 echo "==> Installing drive-locate (enclosure LED) support"

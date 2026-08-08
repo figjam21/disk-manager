@@ -21,6 +21,10 @@ GUI, built on top of the standard Linux storage stack (`mdadm`, `smartctl`, `par
   where the hardware supports it (SES); on plain SATA/USB drives with no
   addressable LED, falls back to a read-only access pattern that makes the
   drive's stock activity light flicker. Never writes to the device.
+- **Power down (standby)** — spins a drive down via `hdparm -y`; it spins back up
+  transparently on its next access. Refuses the system disk, any disk that's a
+  member of a currently-active RAID array, and NVMe (no platters to park); offers
+  to unmount first if anything's mounted.
 - **Firmware** — wraps `fwupdmgr` (the Linux Vendor Firmware Service) to show
   current firmware versions and apply vendor-signed updates. Deliberately does
   not implement any custom flashing logic — that's the only approach safe enough

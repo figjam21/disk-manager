@@ -34,6 +34,7 @@ add_library(dm_core STATIC
   src/core/locate.cpp
   src/core/firmware.cpp
   src/core/recovery.cpp
+  src/core/power.cpp
 )
 target_include_directories(dm_core PUBLIC include)
 target_link_libraries(dm_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json)
@@ -89,7 +90,7 @@ set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
 # Runtime tools the core library shells out to -- not linked libraries, so
 # shlibdeps can't discover these; declared by hand instead.
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-    "mdadm, smartmontools, parted, e2fsprogs, xfsprogs, btrfs-progs, dosfstools, sg3-utils, ledmon, gddrescue, testdisk, fwupd")
+    "mdadm, smartmontools, parted, e2fsprogs, xfsprogs, btrfs-progs, dosfstools, sg3-utils, ledmon, gddrescue, testdisk, fwupd, hdparm")
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_SOURCE_DIR}/packaging/postinst;${CMAKE_SOURCE_DIR}/packaging/postrm")
 

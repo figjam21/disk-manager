@@ -12,6 +12,7 @@
 #include "dm/locate.hpp"
 #include "dm/firmware.hpp"
 #include "dm/recovery.hpp"
+#include "dm/power.hpp"
 
 namespace dm {
 
@@ -82,6 +83,7 @@ private:
     void onDiskDetailsClicked();
     void onDiskPartitionsClicked();
     void onDiskLocateClicked();
+    void onDiskPowerDownClicked();
 
     void showSmartDetailDialog(const std::string& diskPath);
     void showPartitionsDialog(const std::string& diskPath);
@@ -147,6 +149,7 @@ private:
     LocateManager locate_;
     FirmwareManager firmware_;
     RecoveryManager recovery_;
+    PowerManager power_;
 
     // ---- top level layout ---------------------------------------------
     Gtk::Box vbox_{Gtk::ORIENTATION_VERTICAL};
@@ -165,6 +168,7 @@ private:
     Gtk::Button disksDetailsBtn_{"SMART Details"};
     Gtk::Button disksPartitionsBtn_{"Partitions"};
     Gtk::Button disksLocateBtn_{"Locate"};
+    Gtk::Button disksPowerDownBtn_{"Power Down"};
 
     // ---- Arrays tab ----------------------------------------------------
     Gtk::Box arraysTab_{Gtk::ORIENTATION_VERTICAL, 4};

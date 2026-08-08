@@ -94,9 +94,10 @@ void TuiApp::screenDiskDetail(const std::string& diskPath) {
             "View SMART detail",
             "Partitions & filesystems",
             "Locate this drive (blink activity light)",
+            "Power down (standby)",
             "Back"
         });
-        if (choice < 0 || choice == 3) return;
+        if (choice < 0 || choice == 4) return;
         switch (choice) {
             case 0: screenSmartDetail(diskPath); break;
             case 1: screenPartitions(diskPath); break;
@@ -118,8 +119,62 @@ void TuiApp::screenDiskDetail(const std::string& diskPath) {
                 }
                 break;
             }
+            case 3: screenPowerDown(*devOpt); break;
         }
     }
+}
+
+void TuiApp::screenPowerDown(const BlockDevice& dev) {
+    if (!power_.hdparmAvailable()) { ui::showMessage("Power down", "hdparm is not installed. Run install.sh first."); return; }
+
+    if (dev.kname == devices_.rootDiskName()) {
+        ui::showMessage("Power down", "Refusing to power down the system disk.");
+        return;
+    }
+    if (!power_.supportsStandby(dev.transport)) {
+        ui::showMessage("Power down", dev.path + " is " + (dev.transport.empty() ? "not a spinning ATA/SATA disk" : dev.transport) +
+            " -- ATA standby doesn't apply (no platters/heads to park).");
+        return;
+    }
+
+    // Refuse if this disk (or any partition on it) is a member of a currently
+    // active RAID array -- spinning it down mid-array risks the array treating
+    // it as failed.
+    std::vector<std::string> namesToCheck = {dev.path};
+    for (auto& c : dev.childPaths) namesToCheck.push_back(c);
+    for (auto& arr : mdadm_.listArrays()) {
+        for (auto& m : arr.members) {
+            if (std::find(namesToCheck.begin(), namesToCheck.end(), m.device) != namesToCheck.end()) {
+                ui::showMessage("Power down",
+                    dev.path + " has a member in active RAID array " + arr.device + " (" + m.device + ").\n"
+                    "Powering it down could make the array treat it as failed. Stop or\n"
+                    "otherwise take the array down first if you really need to do this.");
+                return;
+            }
+        }
+    }
+
+    // Collect anything currently mounted under this disk or its partitions.
+    std::vector<std::string> mounted;
+    for (auto& name : namesToCheck) {
+        auto d = devices_.find(name);
+        if (d && !d->mountpoint.empty()) mounted.push_back(d->mountpoint);
+    }
+    if (!mounted.empty()) {
+        std::ostringstream os;
+        os << dev.path << " has mounted filesystems:\n";
+        for (auto& mp : mounted) os << "  " << mp << "\n";
+        os << "\nUnmount them and continue?";
+        if (!ui::promptYesNo(os.str())) return;
+        for (auto& mp : mounted) {
+            auto res = filesystems_.unmount(mp);
+            if (!res.ok()) { ui::showText("Unmount failed", "Could not unmount " + mp + ":\n" + res.stdErr); return; }
+        }
+    }
+
+    if (!ui::promptYesNo("Spin down " + dev.path + " now?\nIt will spin back up automatically on its next access.")) return;
+    auto res = power_.standby(dev.path);
+    ui::showText("Power down", res.ok() ? dev.path + " is now in standby." : ("Failed:\n" + res.stdErr));
 }
 
 void TuiApp::screenSmartDetail(const std::string& diskPath) {

@@ -7,6 +7,7 @@
 #include "dm/locate.hpp"
 #include "dm/firmware.hpp"
 #include "dm/recovery.hpp"
+#include "dm/power.hpp"
 
 namespace dm {
 
@@ -23,9 +24,11 @@ private:
     LocateManager locate_;
     FirmwareManager firmware_;
     RecoveryManager recovery_;
+    PowerManager power_;
 
     void screenDisks();
     void screenDiskDetail(const std::string& diskPath);
+    void screenPowerDown(const BlockDevice& dev);
     void screenSmartDetail(const std::string& diskPath);
     void screenPartitions(const std::string& diskPath);
     void screenCreatePartition(const std::string& diskPath);
