@@ -25,6 +25,52 @@ std::string healthGlyph(const SmartReport& r, bool atRisk) {
     return r.healthy ? "OK" : "FAIL";
 }
 
+std::string join(const std::vector<std::string>& items, const std::string& sep) {
+    std::string out;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i) out += sep;
+        out += items[i];
+    }
+    return out;
+}
+
+// Mountpoint(s) and RAID membership for a disk, checking the disk itself and
+// every partition on it. RAID membership covers both currently-assembled arrays
+// (from listArrays()) and arrays found on-disk but not assembled (from
+// scanForArrays()) -- a disk can be a "member" either way.
+struct DiskExtra { std::string mounted; std::string raid; };
+
+DiskExtra computeDiskExtra(const BlockDevice& d, DeviceManager& devices,
+                            const std::vector<RaidArray>& activeArrays,
+                            const std::vector<DiscoveredArray>& discoveredArrays) {
+    std::vector<std::string> names = {d.path};
+    for (auto& c : d.childPaths) names.push_back(c);
+    auto contains = [&](const std::string& p) { return std::find(names.begin(), names.end(), p) != names.end(); };
+
+    std::vector<std::string> mounted;
+    for (auto& n : names) {
+        auto dev = devices.find(n);
+        if (dev && !dev->mountpoint.empty()) mounted.push_back(dev->mountpoint);
+    }
+
+    std::vector<std::string> raidHits;
+    for (auto& arr : activeArrays) {
+        for (auto& m : arr.members) {
+            if (contains(m.device)) { raidHits.push_back(arr.device); break; }
+        }
+    }
+    for (auto& disc : discoveredArrays) {
+        if (disc.active) continue; // already covered via activeArrays above
+        bool hit = std::any_of(disc.devices.begin(), disc.devices.end(), contains);
+        if (hit) raidHits.push_back(disc.preferredDevice + " (not assembled)");
+    }
+
+    DiskExtra extra;
+    extra.mounted = mounted.empty() ? "-" : join(mounted, ", ");
+    extra.raid = raidHits.empty() ? "-" : join(raidHits, ", ");
+    return extra;
+}
+
 } // namespace
 
 void TuiApp::run() {
@@ -68,14 +114,19 @@ void TuiApp::screenDisks() {
         auto disks = devices_.listDisks();
         if (disks.empty()) { ui::showMessage("Disks", "No disks found."); return; }
         std::string rootDisk = devices_.rootDiskName();
+        auto activeArrays = mdadm_.available() ? mdadm_.listArrays() : std::vector<RaidArray>{};
+        auto discoveredArrays = mdadm_.available() ? mdadm_.scanForArrays() : std::vector<DiscoveredArray>{};
         std::vector<std::string> items;
         for (auto& d : disks) {
             auto report = smart_.query(d.path);
             bool risk = smart_.isAtRisk(report);
+            auto extra = computeDiskExtra(d, devices_, activeArrays, discoveredArrays);
             std::ostringstream os;
             os << d.path << "  " << std::setw(8) << human(d.sizeBytes)
                << "  [" << healthGlyph(report, risk) << "]"
                << "  " << (d.model.empty() ? "(unknown model)" : d.model)
+               << "  mounted:" << extra.mounted
+               << "  raid:" << extra.raid
                << (d.kname == rootDisk ? "  (system disk)" : "");
             items.push_back(os.str());
         }

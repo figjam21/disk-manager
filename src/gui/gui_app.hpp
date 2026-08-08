@@ -34,8 +34,10 @@ private:
         Gtk::TreeModelColumn<Glib::ustring> status;
         Gtk::TreeModelColumn<Glib::ustring> statusColor;
         Gtk::TreeModelColumn<Glib::ustring> model;
+        Gtk::TreeModelColumn<Glib::ustring> mounted;
+        Gtk::TreeModelColumn<Glib::ustring> raid;
         Gtk::TreeModelColumn<Glib::ustring> system;
-        DiskColumns() { add(path); add(size); add(status); add(statusColor); add(model); add(system); }
+        DiskColumns() { add(path); add(size); add(status); add(statusColor); add(model); add(mounted); add(raid); add(system); }
     };
 
     struct ArrayColumns : public Gtk::TreeModelColumnRecord {

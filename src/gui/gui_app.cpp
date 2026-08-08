@@ -38,6 +38,52 @@ std::string healthColor(const std::string& glyph) {
     return "#757575";                      // grey ("?")
 }
 
+std::string join(const std::vector<std::string>& items, const std::string& sep) {
+    std::string out;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i) out += sep;
+        out += items[i];
+    }
+    return out;
+}
+
+// Mountpoint(s) and RAID membership for a disk, checking the disk itself and
+// every partition on it. RAID membership covers both currently-assembled arrays
+// (from listArrays()) and arrays found on-disk but not assembled (from
+// scanForArrays()) -- a disk can be a "member" either way.
+struct DiskExtra { std::string mounted; std::string raid; };
+
+DiskExtra computeDiskExtra(const BlockDevice& d, DeviceManager& devices,
+                            const std::vector<RaidArray>& activeArrays,
+                            const std::vector<DiscoveredArray>& discoveredArrays) {
+    std::vector<std::string> names = {d.path};
+    for (auto& c : d.childPaths) names.push_back(c);
+    auto contains = [&](const std::string& p) { return std::find(names.begin(), names.end(), p) != names.end(); };
+
+    std::vector<std::string> mounted;
+    for (auto& n : names) {
+        auto dev = devices.find(n);
+        if (dev && !dev->mountpoint.empty()) mounted.push_back(dev->mountpoint);
+    }
+
+    std::vector<std::string> raidHits;
+    for (auto& arr : activeArrays) {
+        for (auto& m : arr.members) {
+            if (contains(m.device)) { raidHits.push_back(arr.device); break; }
+        }
+    }
+    for (auto& disc : discoveredArrays) {
+        if (disc.active) continue; // already covered via activeArrays above
+        bool hit = std::any_of(disc.devices.begin(), disc.devices.end(), contains);
+        if (hit) raidHits.push_back(disc.preferredDevice + " (not assembled)");
+    }
+
+    DiskExtra extra;
+    extra.mounted = mounted.empty() ? "-" : join(mounted, ", ");
+    extra.raid = raidHits.empty() ? "-" : join(raidHits, ", ");
+    return extra;
+}
+
 // Modal dialog that drives a Gtk::ProgressBar from a worker thread. All
 // worker-thread -> UI communication goes through Glib::Dispatcher, which is
 // the only thread-safe way to wake up the GTK main loop from another thread;
@@ -168,6 +214,8 @@ void GuiApp::buildDisksTab() {
         disksView_.append_column(*col);
     }
     disksView_.append_column("Model", diskCols_.model);
+    disksView_.append_column("Mounted", diskCols_.mounted);
+    disksView_.append_column("RAID", diskCols_.raid);
     disksView_.append_column("", diskCols_.system);
     disksView_.signal_row_activated().connect(sigc::mem_fun(*this, &GuiApp::onDisksRowActivated));
 
@@ -198,16 +246,21 @@ void GuiApp::refreshDisks() {
     disksStore_->clear();
     auto disks = devices_.listDisks();
     std::string rootDisk = devices_.rootDiskName();
+    auto activeArrays = mdadm_.available() ? mdadm_.listArrays() : std::vector<RaidArray>{};
+    auto discoveredArrays = mdadm_.available() ? mdadm_.scanForArrays() : std::vector<DiscoveredArray>{};
     for (auto& d : disks) {
         auto report = smart_.query(d.path);
         bool risk = smart_.isAtRisk(report);
         std::string glyph = healthGlyph(report, risk);
+        auto extra = computeDiskExtra(d, devices_, activeArrays, discoveredArrays);
         auto row = *disksStore_->append();
         row[diskCols_.path] = d.path;
         row[diskCols_.size] = human(d.sizeBytes);
         row[diskCols_.status] = glyph;
         row[diskCols_.statusColor] = healthColor(glyph);
         row[diskCols_.model] = d.model.empty() ? "(unknown model)" : d.model;
+        row[diskCols_.mounted] = extra.mounted;
+        row[diskCols_.raid] = extra.raid;
         row[diskCols_.system] = (!rootDisk.empty() && d.kname == rootDisk) ? "system disk" : "";
     }
 }
