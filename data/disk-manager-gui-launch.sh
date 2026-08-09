@@ -1,21 +1,20 @@
 #!/bin/sh
-# Diagnostic launcher: the plain `Terminal=true` + `sudo ...` Exec line was
-# reportedly opening a completely blank terminal window with no visible
-# prompt or error at all, which means something is going wrong before we
-# even get useful output to debug from. This wrapper prints every step
-# explicitly and refuses to auto-close, so whatever is actually happening
-# becomes visible instead of disappearing with the window.
-echo "=== disk-manager-gui launcher starting ==="
-echo "whoami: $(whoami)"
-echo "DISPLAY=$DISPLAY"
-echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
-echo "XAUTHORITY=$XAUTHORITY"
-echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
-echo "sudo path: $(command -v sudo || echo NOT FOUND)"
-echo "--- running: sudo --preserve-env=DISPLAY,XAUTHORITY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR /usr/bin/disk-manager-gui ---"
+# Launches disk-manager-gui as root from a terminal. Runs through a terminal +
+# sudo rather than pkexec because pkexec strips the display environment
+# (DISPLAY/XAUTHORITY/WAYLAND_DISPLAY/XDG_RUNTIME_DIR) from the elevated
+# process, and on at least some Wayland compositors even re-injecting those
+# variables explicitly isn't enough to get a root GTK client actually mapped.
+# Running inside the user's own terminal sidesteps that: it's a normal,
+# already-connected client the whole time, sudo just changes its UID.
 sudo --preserve-env=DISPLAY,XAUTHORITY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR /usr/bin/disk-manager-gui
 status=$?
-echo "--- exited with status $status ---"
-echo
-echo "Press Enter to close this window..."
-read _dummy
+
+# Only linger (and explain why) on a non-zero exit -- a normal, successful run
+# should just close the terminal along with the app, not demand a keypress
+# every time.
+if [ "$status" -ne 0 ]; then
+    echo "disk-manager-gui exited with status $status"
+    echo "Press Enter to close this window..."
+    read -r _dummy
+fi
+exit "$status"

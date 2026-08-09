@@ -53,7 +53,13 @@ std::string join(const std::vector<std::string>& items, const std::string& sep) 
 // scanForArrays()) -- a disk can be a "member" either way.
 struct DiskExtra { std::string mounted; std::string raid; };
 
-DiskExtra computeDiskExtra(const BlockDevice& d, DeviceManager& devices,
+// `allDevices` must be a single already-fetched DeviceManager::listAll() result,
+// reused across every disk in the caller's loop -- DeviceManager::find() re-runs
+// `lsblk` from scratch on every call, so calling it once per partition per disk
+// here turns a single screen refresh into dozens of redundant lsblk invocations
+// (this was the actual cause of a "very slow to launch" bug: not the
+// display/pkexec/sudo plumbing, just this).
+DiskExtra computeDiskExtra(const BlockDevice& d, const std::vector<BlockDevice>& allDevices,
                             const std::vector<RaidArray>& activeArrays,
                             const std::vector<DiscoveredArray>& discoveredArrays) {
     std::vector<std::string> names = {d.path};
@@ -62,8 +68,9 @@ DiskExtra computeDiskExtra(const BlockDevice& d, DeviceManager& devices,
 
     std::vector<std::string> mounted;
     for (auto& n : names) {
-        auto dev = devices.find(n);
-        if (dev && !dev->mountpoint.empty()) mounted.push_back(dev->mountpoint);
+        auto it = std::find_if(allDevices.begin(), allDevices.end(),
+                                [&](const BlockDevice& bd) { return bd.path == n; });
+        if (it != allDevices.end() && !it->mountpoint.empty()) mounted.push_back(it->mountpoint);
     }
 
     std::vector<std::string> raidHits;
@@ -244,7 +251,11 @@ void GuiApp::buildDisksTab() {
 
 void GuiApp::refreshDisks() {
     disksStore_->clear();
-    auto disks = devices_.listDisks();
+    // Fetched once and reused for every disk below -- each of listDisks()/find()
+    // would otherwise re-run `lsblk` from scratch on every call.
+    auto allDevices = devices_.listAll();
+    std::vector<BlockDevice> disks;
+    for (auto& d : allDevices) if (d.type == "disk") disks.push_back(d);
     std::string rootDisk = devices_.rootDiskName();
     auto activeArrays = mdadm_.available() ? mdadm_.listArrays() : std::vector<RaidArray>{};
     auto discoveredArrays = mdadm_.available() ? mdadm_.scanForArrays() : std::vector<DiscoveredArray>{};
@@ -252,7 +263,7 @@ void GuiApp::refreshDisks() {
         auto report = smart_.query(d.path);
         bool risk = smart_.isAtRisk(report);
         std::string glyph = healthGlyph(report, risk);
-        auto extra = computeDiskExtra(d, devices_, activeArrays, discoveredArrays);
+        auto extra = computeDiskExtra(d, allDevices, activeArrays, discoveredArrays);
         auto row = *disksStore_->append();
         row[diskCols_.path] = d.path;
         row[diskCols_.size] = human(d.sizeBytes);
