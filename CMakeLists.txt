@@ -65,6 +65,9 @@ install(FILES data/disk-manager-tui.desktop DESTINATION share/applications)
 if(HAVE_GTKMM)
   install(TARGETS disk-manager-gui RUNTIME DESTINATION bin)
   install(FILES data/disk-manager-gui.desktop DESTINATION share/applications)
+  install(PROGRAMS data/disk-manager-gui-launch.sh
+          DESTINATION bin
+          RENAME disk-manager-gui-launch)
 endif()
 
 install(FILES data/icons/disk-manager.svg DESTINATION share/icons/hicolor/scalable/apps)

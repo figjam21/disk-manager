@@ -4,7 +4,7 @@ Version=1.0
 Name=Disk Manager
 GenericName=Disk & RAID Manager
 Comment=Manage disks, partitions, RAID arrays, SMART health, firmware, and recovery
-Exec=sudo --preserve-env=DISPLAY,XAUTHORITY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR /usr/bin/disk-manager-gui
+Exec=/usr/bin/disk-manager-gui-launch
 Icon=disk-manager
 Terminal=true
 Categories=System;HardwareSettings;
